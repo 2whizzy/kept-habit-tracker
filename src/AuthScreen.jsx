@@ -9,7 +9,7 @@ const T = {
 };
 
 export default function AuthScreen() {
-  const [mode, setMode] = useState("login"); // login | signup
+  const [mode, setMode] = useState("login"); // login | signup | forgot
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -20,7 +20,13 @@ export default function AuthScreen() {
     if (busy) return;
     setBusy(true); setMsg(null);
     try {
-      if (mode === "signup") {
+      if (mode === "forgot") {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin,
+        });
+        if (error) throw error;
+        setMsg({ kind: "info", text: "Check your email for a link to reset your password." });
+      } else if (mode === "signup") {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         if (!data.session) {
@@ -62,16 +68,26 @@ export default function AuthScreen() {
           </span>
           <div>
             <p style={{ color: T.text, fontWeight: 700, fontSize: 18, letterSpacing: "-0.02em", margin: 0 }}>Kept</p>
-            <p style={{ color: T.faint, fontSize: 12, margin: 0 }}>{mode === "login" ? "Welcome back" : "Create your account"}</p>
+            <p style={{ color: T.faint, fontSize: 12, margin: 0 }}>
+              {mode === "login" ? "Welcome back" : mode === "signup" ? "Create your account" : "Reset your password"}
+            </p>
           </div>
         </div>
 
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <input type="email" required autoComplete="email" placeholder="Email"
             value={email} onChange={(e) => setEmail(e.target.value)} style={field} aria-label="Email" />
-          <input type="password" required minLength={6} placeholder="Password (6+ characters)"
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
-            value={password} onChange={(e) => setPassword(e.target.value)} style={field} aria-label="Password" />
+          {mode !== "forgot" && (
+            <input type="password" required minLength={6} placeholder="Password (6+ characters)"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              value={password} onChange={(e) => setPassword(e.target.value)} style={field} aria-label="Password" />
+          )}
+          {mode === "login" && (
+            <button type="button" onClick={() => { setMode("forgot"); setMsg(null); }}
+              style={{ alignSelf: "flex-end", background: "none", border: "none", color: T.muted, fontSize: 12.5, cursor: "pointer", padding: 0 }}>
+              Forgot password?
+            </button>
+          )}
           <button type="submit" disabled={busy} style={{
             marginTop: 6, borderRadius: 16, padding: "12px 0", border: "none", cursor: "pointer",
             background: ACCENT, color: "#0A0A0F", fontWeight: 600, fontSize: 14,
@@ -79,7 +95,7 @@ export default function AuthScreen() {
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           }}>
             {busy && <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />}
-            {mode === "login" ? "Log in" : "Sign up"}
+            {mode === "login" ? "Log in" : mode === "signup" ? "Sign up" : "Send reset link"}
           </button>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </form>
@@ -93,13 +109,22 @@ export default function AuthScreen() {
           }}>{msg.text}</p>
         )}
 
-        <p style={{ marginTop: 16, fontSize: 13, color: T.muted, textAlign: "center" }}>
-          {mode === "login" ? "New here?" : "Already have an account?"}{" "}
-          <button onClick={() => { setMode(mode === "login" ? "signup" : "login"); setMsg(null); }}
-            style={{ background: "none", border: "none", color: ACCENT, fontWeight: 600, cursor: "pointer", fontSize: 13, padding: 0 }}>
-            {mode === "login" ? "Sign up" : "Log in"}
-          </button>
-        </p>
+        {mode === "forgot" ? (
+          <p style={{ marginTop: 16, fontSize: 13, color: T.muted, textAlign: "center" }}>
+            <button onClick={() => { setMode("login"); setMsg(null); }}
+              style={{ background: "none", border: "none", color: ACCENT, fontWeight: 600, cursor: "pointer", fontSize: 13, padding: 0 }}>
+              Back to log in
+            </button>
+          </p>
+        ) : (
+          <p style={{ marginTop: 16, fontSize: 13, color: T.muted, textAlign: "center" }}>
+            {mode === "login" ? "New here?" : "Already have an account?"}{" "}
+            <button onClick={() => { setMode(mode === "login" ? "signup" : "login"); setMsg(null); }}
+              style={{ background: "none", border: "none", color: ACCENT, fontWeight: 600, cursor: "pointer", fontSize: 13, padding: 0 }}>
+              {mode === "login" ? "Sign up" : "Log in"}
+            </button>
+          </p>
+        )}
       </div>
     </div>
   );

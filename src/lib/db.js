@@ -10,6 +10,8 @@ import { supabase } from "../supabaseClient";
  *                       {"qty":n} for quantifiable ones
  *   auth user metadata → habit_config: { [habitId]: { mode, color, type, days,
  *                       quant, quantTarget, unit, desc, archived, order } }
+ *   auth user metadata → profile: { displayName, avatarEmoji, avatarColor,
+ *                       theme, accent }
  * RLS policies scope every query to auth.uid() automatically; user_id is still
  * written on inserts because the policies require it to match.
  */
@@ -22,6 +24,15 @@ export const getConfig = (user) => (user && user.user_metadata && user.user_meta
 export async function saveConfig(cfg) {
   const { error } = await supabase.auth.updateUser({ data: { habit_config: cfg } });
   throwIf(error);
+}
+
+/* ---- profile prefs, same pattern as habit_config: stored in user metadata ---- */
+export const getProfile = (user) => (user && user.user_metadata && user.user_metadata.profile) || {};
+
+export async function saveProfile(profile) {
+  const { data, error } = await supabase.auth.updateUser({ data: { profile } });
+  throwIf(error);
+  return data.user;
 }
 
 /* ---- habits ---- */

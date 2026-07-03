@@ -7,11 +7,12 @@ import {
   Plus, Check, Flame, Settings as SettingsIcon, BarChart3, ListChecks,
   ChevronLeft, ChevronRight, Archive, ArchiveRestore, Trash2, Download,
   Moon, Sun, X, GripVertical, Sparkles, Pencil, Minus, CalendarDays, Zap, LayoutGrid, TrendingUp, TrendingDown,
-  Play, Pause, StopCircle, Clock3, LogOut, Loader2,
+  Play, Pause, StopCircle, Clock3, LogOut,
 } from "lucide-react";
 import {
   getConfig, saveConfig, fetchHabits, fetchEntries,
   insertHabit, updateHabitRow, deleteHabitCascade, upsertEntry,
+  getProfile, saveProfile,
 } from "./lib/db";
 
 /* ---------------- date utils ---------------- */
@@ -39,6 +40,7 @@ const ACCENTS = [
   { name: "Marigold", hex: "#FFB454" },
   { name: "Orchid", hex: "#E86BB3" },
 ];
+const AVATAR_EMOJIS = ["\u{1F642}", "\u{1F98A}", "\u{1F331}", "⚡", "\u{1F525}", "\u{1F30A}", "\u{1F9D8}", "\u{1F31F}", "\u{1F3AF}", "\u{1F984}"];
 const CATEGORIES = [
   { name: "Health", color: "#3DDC97" },
   { name: "Mindfulness", color: "#9D8CFF" },
@@ -170,6 +172,12 @@ function consistency(h, comps, from, to) {
   return sched ? done / sched : 0;
 }
 
+function dayProgress(habits, comps, d) {
+  const scheduled = habits.filter((h) => !h.archived && (isScheduled(h, d) || doneValue(comps, d, h.id) > 0));
+  const done = scheduled.filter((h) => isDone(h, comps, d)).length;
+  return { done, total: scheduled.length };
+}
+
 function avgIntensity(h, comps, from, to) {
   let sum = 0, n = 0, d = from;
   while (d <= to) {
@@ -254,6 +262,41 @@ function CheckButton({ done, onClick, accent, T, label }) {
         style={{ opacity: done ? 1 : 0, transform: done ? "scale(1)" : "scale(.4)", transition: `all .28s ${SPRING}` }} />
       {pop && <span className="hb-glow" style={{ background: accent }} />}
     </button>
+  );
+}
+
+/* ---------------- swipeable row (mobile: swipe right to complete, left to archive) ---------------- */
+function SwipeRow({ children, onComplete, onArchive, accent, disabled }) {
+  const [dx, setDx] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const startX = useRef(0);
+  const threshold = 76;
+
+  const handleStart = (e) => { if (disabled) return; startX.current = e.touches[0].clientX; setDragging(true); };
+  const handleMove = (e) => {
+    if (!dragging) return;
+    setDx(Math.max(-112, Math.min(112, e.touches[0].clientX - startX.current)));
+  };
+  const handleEnd = () => {
+    if (dx > threshold) onComplete && onComplete();
+    else if (dx < -threshold) onArchive && onArchive();
+    setDx(0); setDragging(false);
+  };
+
+  return (
+    <div className="relative" onTouchStart={handleStart} onTouchMove={handleMove} onTouchEnd={handleEnd}>
+      <div aria-hidden className="md:hidden absolute inset-0 flex items-center justify-between px-6 rounded-2xl pointer-events-none"
+        style={{
+          background: dx > 4 ? `${accent}22` : dx < -4 ? "#FF6B7A22" : "transparent",
+          opacity: Math.min(1, Math.abs(dx) / threshold),
+        }}>
+        <Check size={18} style={{ color: accent }} />
+        <Archive size={18} style={{ color: "#FF6B7A" }} />
+      </div>
+      <div style={{ transform: `translateX(${dx}px)`, transition: dragging ? "none" : `transform .35s ${SPRING}` }}>
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -446,15 +489,41 @@ function TimeTools({ h, date, T }) {
   );
 }
 
+function Skel({ T, style, className = "" }) {
+  return (
+    <div className={`hb-skel ${className}`} style={{ background: T.surface2, borderRadius: 10, ...style }} />
+  );
+}
+
 function Splash({ T, accent }) {
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3"
+    <div className="fixed inset-0 z-50 overflow-hidden px-4 sm:px-8 pt-6 sm:pt-10 pb-28 md:pb-12"
       style={{ background: T.bg }} role="status" aria-label="Loading your habits">
-      <span className="flex items-center justify-center rounded-2xl" style={{ width: 44, height: 44, background: accent, boxShadow: `0 0 30px ${accent}77` }}>
-        <Check size={22} color="#0A0A0F" strokeWidth={3} />
-      </span>
-      <Loader2 size={18} style={{ color: accent, animation: "hbSpin 1s linear infinite" }} />
-      <style>{`@keyframes hbSpin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes hbShimmer { 0% { background-position: -220px 0; } 100% { background-position: 220px 0; } }
+        .hb-skel { position: relative; overflow: hidden; }
+        .hb-skel::after {
+          content: ""; position: absolute; inset: 0;
+          background: linear-gradient(90deg, transparent, ${T.text}14, transparent);
+          background-size: 220px 100%; animation: hbShimmer 1.4s ease-in-out infinite;
+        }
+      `}</style>
+      <div className="max-w-2xl mx-auto w-full">
+        <div className="flex items-end justify-between mb-5">
+          <div className="flex flex-col gap-2">
+            <Skel T={T} style={{ width: 70, height: 14 }} />
+            <Skel T={T} style={{ width: 160, height: 30 }} />
+          </div>
+          <Skel T={T} style={{ width: 110, height: 34, borderRadius: 999 }} />
+        </div>
+        <div className="grid grid-cols-7 gap-1.5 mb-6">
+          {Array.from({ length: 7 }, (_, i) => <Skel key={i} T={T} style={{ height: 68, borderRadius: 16 }} />)}
+        </div>
+        <Skel T={T} style={{ height: 128, borderRadius: 24, marginBottom: 24 }} />
+        <div className="flex flex-col gap-2.5">
+          {Array.from({ length: 4 }, (_, i) => <Skel key={i} T={T} style={{ height: 72, borderRadius: 16 }} />)}
+        </div>
+      </div>
     </div>
   );
 }
@@ -492,7 +561,7 @@ function QuantRow({ h, value, onChange, accent, T }) {
   );
 }
 
-function TodayView({ habits, comps, setComp, date, setDate, T, accent, grace, onQuickAdd, onStarter }) {
+function TodayView({ habits, comps, setComp, date, setDate, T, accent, grace, onQuickAdd, onStarter, onArchive }) {
   const active = habits.filter((h) => !h.archived).sort((a, b) => a.order - b.order);
   const scheduled = active.filter((h) => isScheduled(h, date) || doneValue(comps, date, h.id) > 0);
   const doneCount = scheduled.filter((h) => isDone(h, comps, date)).length;
@@ -587,37 +656,41 @@ function TodayView({ habits, comps, setComp, date, setDate, T, accent, grace, on
           const streak = calcStreak(h, comps, grace);
           const c = hColor(h);
           return (
-            <div key={h.id} className="hb-rise hb-card flex flex-col rounded-2xl px-4 py-3"
-              style={{
-                background: T.surface, border: `1px solid ${T.border}`,
-                animationDelay: `${i * 45}ms`,
-                opacity: done ? 0.7 : 1, transition: `opacity .4s, box-shadow .45s ${EASE}, border-color .45s`,
-                "--glow-border": c + "40",
-                "--glow-shadow": `0 0 0 1px ${c}26, 0 6px 30px -8px ${c}33`,
-              }}>
-              <div className="flex items-center gap-3 w-full">
-              <span className="text-xl w-8 text-center" aria-hidden>{h.emoji}</span>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="font-medium truncate" style={{ color: T.text, textDecoration: done && !h.quant ? "line-through" : "none", textDecorationColor: T.faint }}>
-                    {h.name}
+            <SwipeRow key={h.id} accent={accent} disabled={h.quant}
+              onComplete={() => !done && setComp(date, h.id, 1)}
+              onArchive={() => onArchive && onArchive(h.id)}>
+              <div className="hb-rise hb-card flex flex-col rounded-2xl px-4 py-3"
+                style={{
+                  background: T.surface, border: `1px solid ${T.border}`,
+                  animationDelay: `${i * 45}ms`,
+                  opacity: done ? 0.7 : 1, transition: `opacity .4s, box-shadow .45s ${EASE}, border-color .45s`,
+                  "--glow-border": c + "40",
+                  "--glow-shadow": `0 0 0 1px ${c}26, 0 6px 30px -8px ${c}33`,
+                }}>
+                <div className="flex items-center gap-3 w-full">
+                <span className="text-xl w-8 text-center" aria-hidden>{h.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium truncate" style={{ color: T.text, textDecoration: done && !h.quant ? "line-through" : "none", textDecorationColor: T.faint }}>
+                      {h.name}
+                    </p>
+                    <StreakBadge streak={streak} T={T} accent={accent} />
+                  </div>
+                  <p className="text-xs flex items-center gap-1.5" style={{ color: T.faint }}>
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: catColor(h.category), boxShadow: `0 0 5px ${catColor(h.category)}88` }} />
+                    {h.category}
+                    {h.type === "tpw" && ` · ${h.target}× a week`}
+                    {h.desc && ` · ${h.desc}`}
                   </p>
-                  <StreakBadge streak={streak} T={T} accent={accent} />
                 </div>
-                <p className="text-xs flex items-center gap-1.5" style={{ color: T.faint }}>
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: catColor(h.category), boxShadow: `0 0 5px ${catColor(h.category)}88` }} />
-                  {h.category}
-                  {h.type === "tpw" && ` · ${h.target}× a week`}
-                  {h.desc && ` · ${h.desc}`}
-                </p>
+                {h.quant
+                  ? <QuantRow h={h} value={v} onChange={(nv) => setComp(date, h.id, nv)} accent={accent} T={T} />
+                  : <CheckButton done={done} label={`Mark ${h.name} ${done ? "incomplete" : "complete"}`}
+                      onClick={() => setComp(date, h.id, done ? 0 : 1)} accent={accent} T={T} />}
+                </div>
+                <TimeTools h={h} date={date} T={T} />
               </div>
-              {h.quant
-                ? <QuantRow h={h} value={v} onChange={(nv) => setComp(date, h.id, nv)} accent={accent} T={T} />
-                : <CheckButton done={done} label={`Mark ${h.name} ${done ? "incomplete" : "complete"}`}
-                    onClick={() => setComp(date, h.id, done ? 0 : 1)} accent={accent} T={T} />}
-              </div>
-              <TimeTools h={h} date={date} T={T} />
-            </div>
+            </SwipeRow>
           );
         })}
       </div>
@@ -1384,7 +1457,10 @@ function AnalysisView({ habits, comps, times, T, accent, grace }) {
 }
 
 /* ---------------- Settings ---------------- */
-function SettingsView({ theme, setTheme, accent, setAccent, grace, setGrace, habits, comps, times, T, user, onSignOut }) {
+function SettingsView({ theme, setTheme, accent, setAccent, grace, setGrace, habits, comps, times, T, user, onSignOut,
+  displayName, setDisplayName, avatarEmoji, setAvatarEmoji, avatarColor, setAvatarColor }) {
+  const [nameDraft, setNameDraft] = useState(displayName);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const download = (name, content, type) => {
     const url = URL.createObjectURL(new Blob([content], { type }));
     const a = document.createElement("a"); a.href = url; a.download = name; a.click();
@@ -1417,6 +1493,46 @@ function SettingsView({ theme, setTheme, accent, setAccent, grace, setGrace, hab
             <LogOut size={13} /> Sign out
           </button>
         </Row>
+        <div className="hb-card rounded-2xl px-4 py-3.5 flex flex-col gap-3" style={card}>
+          <p className="text-sm font-medium" style={{ color: T.text }}>Profile</p>
+          <div className="flex items-center gap-3">
+            <button aria-label="Change avatar" onClick={() => setPickerOpen((p) => !p)}
+              className="hb-press flex items-center justify-center rounded-full flex-shrink-0"
+              style={{ width: 44, height: 44, background: avatarColor + "26", border: `2px solid ${avatarColor}77`, fontSize: 20 }}>
+              {avatarEmoji}
+            </button>
+            <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={() => setDisplayName(nameDraft.trim())}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.target.blur(); } }}
+              placeholder="Display name" aria-label="Display name"
+              className="flex-1 min-w-0 rounded-xl px-3 py-2 text-sm outline-none"
+              style={{ background: T.surface2, border: `1px solid ${T.border}`, color: T.text }} />
+          </div>
+          {pickerOpen && (
+            <div className="hb-rise flex flex-col gap-2.5">
+              <div className="flex flex-wrap gap-2">
+                {AVATAR_EMOJIS.map((em) => (
+                  <button key={em} aria-label={`Use ${em} as avatar`} onClick={() => setAvatarEmoji(em)}
+                    className="hb-press flex items-center justify-center rounded-full"
+                    style={{
+                      width: 32, height: 32, fontSize: 15, background: T.surface2,
+                      boxShadow: avatarEmoji === em ? `0 0 0 2px ${avatarColor}` : "none",
+                    }}>{em}</button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[...ACCENTS.map((a) => a.hex), ...HABIT_COLORS.slice(0, 3)].map((c) => (
+                  <button key={c} aria-label={`Use ${c} as avatar color`} onClick={() => setAvatarColor(c)}
+                    className="rounded-full" style={{
+                      width: 20, height: 20, background: c,
+                      boxShadow: avatarColor === c ? `0 0 0 2px ${T.solid}, 0 0 0 4px ${c}` : "none",
+                      transition: `all .3s ${SPRING}`,
+                    }} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
         <Row>
           <span className="text-sm font-medium" style={{ color: T.text }}>Appearance</span>
           <div className="flex rounded-full p-1" style={{ background: T.surface2 }}>
@@ -1473,16 +1589,17 @@ function SettingsView({ theme, setTheme, accent, setAccent, grace, setGrace, hab
 
 /* ---------------- Celebration & onboarding ---------------- */
 function Celebration({ data, onClose, T, accent }) {
-  const pieces = useMemo(() => Array.from({ length: 46 }, (_, i) => ({
+  const isDay = data.type === "day";
+  const pieces = useMemo(() => Array.from({ length: isDay ? 18 : 46 }, (_, i) => ({
     left: Math.random() * 100, delay: Math.random() * 0.7, dur: 2 + Math.random() * 1.6,
     color: [accent, ...HABIT_COLORS.slice(0, 4)][i % 5],
     size: 6 + Math.random() * 7, rot: Math.random() * 360,
-  })), [accent]);
-  useEffect(() => { const t = setTimeout(onClose, 4200); return () => clearTimeout(t); }, []);
+  })), [accent, isDay]);
+  useEffect(() => { const t = setTimeout(onClose, isDay ? 1900 : 4200); return () => clearTimeout(t); }, [isDay]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden cursor-pointer"
-      style={{ background: `radial-gradient(circle at 50% 40%, ${accent}30, ${T.bg}F2 75%)`, backdropFilter: "blur(10px)" }}
-      onClick={onClose} role="dialog" aria-label="Milestone celebration">
+      style={{ background: isDay ? "transparent" : `radial-gradient(circle at 50% 40%, ${accent}30, ${T.bg}F2 75%)`, backdropFilter: isDay ? "none" : "blur(10px)", pointerEvents: isDay ? "none" : "auto" }}
+      onClick={onClose} role="dialog" aria-label={isDay ? "Perfect day" : "Milestone celebration"}>
       {pieces.map((p, i) => (
         <span key={i} className="hb-confetti absolute rounded-sm" style={{
           left: p.left + "%", top: -20, width: p.size, height: p.size * 0.6, background: p.color,
@@ -1490,19 +1607,29 @@ function Celebration({ data, onClose, T, accent }) {
           animationDelay: p.delay + "s", animationDuration: p.dur + "s", transform: `rotate(${p.rot}deg)`,
         }} />
       ))}
-      <div className="hb-pop text-center px-6">
-        <div className="inline-flex items-center justify-center rounded-full mb-5"
-          style={{ width: 88, height: 88, background: accent, boxShadow: `0 0 0 14px ${accent}22, 0 0 70px ${accent}88` }}>
-          <Flame size={42} color="#0A0A0F" strokeWidth={2.2} />
+      {isDay ? (
+        <div className="hb-pop absolute bottom-24 md:bottom-10 flex items-center gap-2.5 rounded-full px-5 py-3"
+          style={{ background: T.solid, border: `1px solid ${accent}55`, boxShadow: `0 0 0 6px ${accent}22, 0 0 40px ${accent}55, ${T.shadow}` }}>
+          <span className="inline-flex items-center justify-center rounded-full" style={{ width: 26, height: 26, background: accent, boxShadow: `0 0 16px ${accent}99` }}>
+            <Check size={14} color="#0A0A0F" strokeWidth={3} />
+          </span>
+          <span className="font-semibold text-sm" style={{ color: T.text }}>Perfect day — everything's done</span>
         </div>
-        <p className="hb-display hb-reveal text-5xl tabular-nums" style={{ color: T.text, textShadow: `0 0 40px ${accent}66` }}>{data.n}-day streak</p>
-        <p className="hb-display text-xl mt-2" style={{ color: T.text }}>{data.habit.emoji} {data.habit.name}</p>
-        <p className="text-sm mt-3" style={{ color: T.muted }}>
-          {data.n >= 100 ? "One hundred days. This isn't a habit anymore — it's who you are." :
-            data.n >= 30 ? "A full month of showing up. Quietly remarkable." :
-            "Seven days straight. The hardest week is behind you."}
-        </p>
-      </div>
+      ) : (
+        <div className="hb-pop text-center px-6">
+          <div className="inline-flex items-center justify-center rounded-full mb-5"
+            style={{ width: 88, height: 88, background: accent, boxShadow: `0 0 0 14px ${accent}22, 0 0 70px ${accent}88` }}>
+            <Flame size={42} color="#0A0A0F" strokeWidth={2.2} />
+          </div>
+          <p className="hb-display hb-reveal text-5xl tabular-nums" style={{ color: T.text, textShadow: `0 0 40px ${accent}66` }}>{data.n}-day streak</p>
+          <p className="hb-display text-xl mt-2" style={{ color: T.text }}>{data.habit.emoji} {data.habit.name}</p>
+          <p className="text-sm mt-3" style={{ color: T.muted }}>
+            {data.n >= 100 ? "One hundred days. This isn't a habit anymore — it's who you are." :
+              data.n >= 30 ? "A full month of showing up. Quietly remarkable." :
+              "Seven days straight. The hardest week is behind you."}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -1821,13 +1948,29 @@ export default function HabitTracker({ user, onSignOut }) {
   const [dbError, setDbError] = useState(null);
   const [view, setView] = useState("today");
   const [date, setDate] = useState(todayStr());
-  const [theme, setTheme] = useState("dark");
-  const [accent, setAccent] = useState(ACCENTS[0].hex);
+  const initialProfile = useRef(getProfile(user)).current;
+  const [theme, setThemeState] = useState(initialProfile.theme || "dark");
+  const [accent, setAccentState] = useState(initialProfile.accent || ACCENTS[0].hex);
+  const [displayName, setDisplayNameState] = useState(initialProfile.displayName || "");
+  const [avatarEmoji, setAvatarEmojiState] = useState(initialProfile.avatarEmoji || AVATAR_EMOJIS[0]);
+  const [avatarColor, setAvatarColorState] = useState(initialProfile.avatarColor || ACCENTS[0].hex);
   const [grace, setGrace] = useState(false);
   const [onboard, setOnboard] = useState(false);
   const [celebrate, setCelebrate] = useState(null);
   const cfgRef = useRef({});
+  const profileRef = useRef(initialProfile);
   const T = THEMES[theme];
+
+  const saveProfilePatch = (patch) => {
+    const next = { ...profileRef.current, ...patch };
+    profileRef.current = next;
+    saveProfile(next).catch((e) => fail(e, "Couldn't save your profile"));
+  };
+  const setTheme = (v) => { setThemeState(v); saveProfilePatch({ theme: v }); };
+  const setAccent = (v) => { setAccentState(v); saveProfilePatch({ accent: v }); };
+  const setDisplayName = (v) => { setDisplayNameState(v); saveProfilePatch({ displayName: v }); };
+  const setAvatarEmoji = (v) => { setAvatarEmojiState(v); saveProfilePatch({ avatarEmoji: v }); };
+  const setAvatarColor = (v) => { setAvatarColorState(v); saveProfilePatch({ avatarColor: v }); };
 
   const fail = (e, what) => { console.error(what, e); setDbError(`${what} — ${(e && e.message) || "check your connection"}`); };
 
@@ -1885,7 +2028,15 @@ export default function HabitTracker({ user, onSignOut }) {
         const wasDone = doneValue(p, d, id) >= (h.quant ? h.quantTarget : 1);
         if (!wasDone) {
           const s = calcStreak(h, next, grace);
-          if ([7, 30, 100].includes(s.current) && s.unit === "day") setCelebrate({ habit: h, n: s.current });
+          if ([7, 30, 100].includes(s.current) && s.unit === "day") {
+            setCelebrate({ type: "streak", habit: h, n: s.current });
+          } else {
+            const before = dayProgress(habits, p, d);
+            const after = dayProgress(habits, next, d);
+            if (after.total > 0 && after.done === after.total && !(before.total > 0 && before.done === before.total)) {
+              setCelebrate({ type: "day" });
+            }
+          }
         }
       }
       return next;
@@ -2072,6 +2223,14 @@ export default function HabitTracker({ user, onSignOut }) {
             </span>
             <span className="hb-display text-lg" style={{ color: T.text }}>Kept</span>
           </div>
+          <button onClick={() => setView("settings")}
+            className="hb-press flex items-center gap-2.5 rounded-xl px-3 py-2 mb-2 text-left"
+            style={{ background: view === "settings" ? T.surface : "transparent", border: `1px solid ${view === "settings" ? T.border : "transparent"}` }}>
+            <span className="flex items-center justify-center rounded-full flex-shrink-0" style={{ width: 28, height: 28, background: avatarColor + "26", border: `1px solid ${avatarColor}55`, fontSize: 14 }}>
+              {avatarEmoji}
+            </span>
+            <span className="text-sm font-medium truncate" style={{ color: T.text }}>{displayName || user.email}</span>
+          </button>
           {NAV.map(({ key, label, icon: Icon }) => (
             <button key={key} onClick={() => setView(key)} aria-current={view === key ? "page" : undefined}
               className="hb-press flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-left"
@@ -2088,11 +2247,12 @@ export default function HabitTracker({ user, onSignOut }) {
         </nav>
 
         <main className="flex-1 px-4 sm:px-8 pt-6 sm:pt-10 pb-28 md:pb-12">
-          {view === "today" && <TodayView habits={habits} comps={comps} setComp={setComp} date={date} setDate={setDate} T={T} accent={accent} grace={grace} onQuickAdd={quickAdd} onStarter={addStarterHabits} />}
+          {view === "today" && <TodayView habits={habits} comps={comps} setComp={setComp} date={date} setDate={setDate} T={T} accent={accent} grace={grace} onQuickAdd={quickAdd} onStarter={addStarterHabits} onArchive={habitActions.archive} />}
           {view === "habits" && <HabitsView habits={habits} actions={habitActions} comps={comps} T={T} accent={accent} grace={grace} />}
           {view === "analysis" && <AnalysisView habits={habits} comps={comps} times={times} T={T} accent={accent} grace={grace} />}
           {view === "dashboard" && <DashboardView habits={habits} comps={comps} setComp={setComp} T={T} accent={accent} grace={grace} />}
-          {view === "settings" && <SettingsView theme={theme} setTheme={setTheme} accent={accent} setAccent={setAccent} grace={grace} setGrace={setGrace} habits={habits} comps={comps} times={times} T={T} user={user} onSignOut={onSignOut} />}
+          {view === "settings" && <SettingsView theme={theme} setTheme={setTheme} accent={accent} setAccent={setAccent} grace={grace} setGrace={setGrace} habits={habits} comps={comps} times={times} T={T} user={user} onSignOut={onSignOut}
+            displayName={displayName} setDisplayName={setDisplayName} avatarEmoji={avatarEmoji} setAvatarEmoji={setAvatarEmoji} avatarColor={avatarColor} setAvatarColor={setAvatarColor} />}
         </main>
       </div>
 
