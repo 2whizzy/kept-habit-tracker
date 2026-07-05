@@ -265,6 +265,31 @@ function CheckButton({ done, onClick, accent, T, label }) {
   );
 }
 
+function IntensityCell({ h, value, onChange, T, label }) {
+  const base = hColor(h);
+  const [pop, setPop] = useState(false);
+  return (
+    <button
+      aria-label={label}
+      title={`${INTENSITY_LABELS[value]}${value ? ` · ${value}/${MAX_LVL}` : ""}. Tap to ${value >= MAX_LVL ? "reset" : "increase"}.`}
+      onClick={() => { onChange((value + 1) % (MAX_LVL + 1)); setPop(true); setTimeout(() => setPop(false), 400); }}
+      className="hb-cell relative flex items-center justify-center rounded-lg outline-none flex-shrink-0"
+      style={{
+        width: 34, height: 34,
+        ...cellStyle(base, value, T),
+        border: `2px solid ${value ? "transparent" : T.border}`,
+        transform: pop ? "scale(1.18)" : "scale(1)",
+        transitionProperty: "background, border-color, box-shadow, transform",
+        transitionDuration: ".3s, .3s, .45s, .3s",
+        transitionTimingFunction: `${SPRING}`,
+      }}
+    >
+      {value > 0 && <span className="text-xs font-bold tabular-nums" style={{ color: value >= 3 ? "#0A0A0F" : T.text }}>{value}</span>}
+      {pop && <span className="hb-glow" style={{ background: base }} />}
+    </button>
+  );
+}
+
 /* ---------------- swipeable row (mobile: swipe right to complete, left to archive) ---------------- */
 function SwipeRow({ children, onComplete, onArchive, accent, disabled }) {
   const [dx, setDx] = useState(0);
@@ -569,8 +594,6 @@ function TodayView({ habits, comps, setComp, date, setDate, T, accent, grace, on
   const pctAnim = useCountUp(Math.round(pct * 100));
   const [quick, setQuick] = useState("");
   const isToday = date === todayStr();
-  const simple = scheduled.filter((h) => !isQuality(h));
-  const quality = active.filter((h) => isQuality(h));
 
   const week = useMemo(() => {
     const ws = weekStart(todayStr());
@@ -648,15 +671,16 @@ function TodayView({ habits, comps, setComp, date, setDate, T, accent, grace, on
         </div>
       </div>
 
-      {/* simple checklist */}
+      {/* checklist — simple, quantifiable, and quality habits together */}
       <div className="flex flex-col gap-2">
-        {simple.map((h, i) => {
+        {scheduled.map((h, i) => {
           const v = doneValue(comps, date, h.id);
           const done = isDone(h, comps, date);
+          const quality = isQuality(h);
           const streak = calcStreak(h, comps, grace);
           const c = hColor(h);
           return (
-            <SwipeRow key={h.id} accent={accent} disabled={h.quant}
+            <SwipeRow key={h.id} accent={accent} disabled={h.quant || quality}
               onComplete={() => !done && setComp(date, h.id, 1)}
               onArchive={() => onArchive && onArchive(h.id)}>
               <div className="hb-rise hb-card flex flex-col rounded-2xl px-4 py-3"
@@ -671,7 +695,7 @@ function TodayView({ habits, comps, setComp, date, setDate, T, accent, grace, on
                 <span className="text-xl w-8 text-center" aria-hidden>{h.emoji}</span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="font-medium truncate" style={{ color: T.text, textDecoration: done && !h.quant ? "line-through" : "none", textDecorationColor: T.faint }}>
+                    <p className="font-medium truncate" style={{ color: T.text, textDecoration: done && !h.quant && !quality ? "line-through" : "none", textDecorationColor: T.faint }}>
                       {h.name}
                     </p>
                     <StreakBadge streak={streak} T={T} accent={accent} />
@@ -680,10 +704,13 @@ function TodayView({ habits, comps, setComp, date, setDate, T, accent, grace, on
                     <span className="h-1.5 w-1.5 rounded-full" style={{ background: catColor(h.category), boxShadow: `0 0 5px ${catColor(h.category)}88` }} />
                     {h.category}
                     {h.type === "tpw" && ` · ${h.target}× a week`}
+                    {quality && ` · ${INTENSITY_LABELS[v]}`}
                     {h.desc && ` · ${h.desc}`}
                   </p>
                 </div>
-                {h.quant
+                {quality
+                  ? <IntensityCell h={h} value={v} onChange={(nv) => setComp(date, h.id, nv)} T={T} label={`${h.name}: ${INTENSITY_LABELS[v]}`} />
+                  : h.quant
                   ? <QuantRow h={h} value={v} onChange={(nv) => setComp(date, h.id, nv)} accent={accent} T={T} />
                   : <CheckButton done={done} label={`Mark ${h.name} ${done ? "incomplete" : "complete"}`}
                       onClick={() => setComp(date, h.id, done ? 0 : 1)} accent={accent} T={T} />}
@@ -694,20 +721,6 @@ function TodayView({ habits, comps, setComp, date, setDate, T, accent, grace, on
           );
         })}
       </div>
-
-      {/* quality widgets */}
-      {quality.length > 0 && (
-        <>
-          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest mt-7 mb-2.5" style={{ color: T.faint }}>
-            <Zap size={12} /> Quality habits — tap to intensify
-          </p>
-          <div className="flex flex-col gap-3">
-            {quality.map((h, i) => (
-              <QualityCard key={h.id} h={h} comps={comps} setComp={setComp} T={T} accent={accent} grace={grace} index={i} selectedDate={date} />
-            ))}
-          </div>
-        </>
-      )}
 
       {active.length === 0 && (
         <div className="hb-card hb-rise rounded-3xl p-8 text-center" style={{ background: T.surface, border: `1px solid ${T.border}`, boxShadow: T.shadow }}>
@@ -1085,7 +1098,7 @@ function Recap({ habits, comps, onClose, T, accent, grace }) {
   );
 }
 
-function AnalysisView({ habits, comps, times, T, accent, grace }) {
+function AnalysisView({ habits, comps, setComp, times, T, accent, grace }) {
   const [range, setRange] = useState(1);
   const [heatHabit, setHeatHabit] = useState("all");
   const [recap, setRecap] = useState(false);
@@ -1283,6 +1296,19 @@ function AnalysisView({ habits, comps, times, T, accent, grace }) {
             </ResponsiveContainer>
           </div>
         </div>
+      )}
+
+      {qualityHabits.length > 0 && (
+        <>
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest mt-2 mb-2.5" style={{ color: T.faint }}>
+            <Zap size={12} /> Log intensity — tap any day to set it
+          </p>
+          <div className="flex flex-col gap-3 mb-4">
+            {qualityHabits.map((h, i) => (
+              <QualityCard key={h.id} h={h} comps={comps} setComp={setComp} T={T} accent={accent} grace={grace} index={i} selectedDate={todayStr()} />
+            ))}
+          </div>
+        </>
       )}
 
       {/* Time invested */}
@@ -2249,7 +2275,7 @@ export default function HabitTracker({ user, onSignOut }) {
         <main className="flex-1 px-4 sm:px-8 pt-6 sm:pt-10 pb-28 md:pb-12">
           {view === "today" && <TodayView habits={habits} comps={comps} setComp={setComp} date={date} setDate={setDate} T={T} accent={accent} grace={grace} onQuickAdd={quickAdd} onStarter={addStarterHabits} onArchive={habitActions.archive} />}
           {view === "habits" && <HabitsView habits={habits} actions={habitActions} comps={comps} T={T} accent={accent} grace={grace} />}
-          {view === "analysis" && <AnalysisView habits={habits} comps={comps} times={times} T={T} accent={accent} grace={grace} />}
+          {view === "analysis" && <AnalysisView habits={habits} comps={comps} setComp={setComp} times={times} T={T} accent={accent} grace={grace} />}
           {view === "dashboard" && <DashboardView habits={habits} comps={comps} setComp={setComp} T={T} accent={accent} grace={grace} />}
           {view === "settings" && <SettingsView theme={theme} setTheme={setTheme} accent={accent} setAccent={setAccent} grace={grace} setGrace={setGrace} habits={habits} comps={comps} times={times} T={T} user={user} onSignOut={onSignOut}
             displayName={displayName} setDisplayName={setDisplayName} avatarEmoji={avatarEmoji} setAvatarEmoji={setAvatarEmoji} avatarColor={avatarColor} setAvatarColor={setAvatarColor} />}
