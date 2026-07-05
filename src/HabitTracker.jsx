@@ -6,7 +6,7 @@ import {
 import {
   Plus, Check, Flame, Settings as SettingsIcon, BarChart3, ListChecks,
   ChevronLeft, ChevronRight, Archive, ArchiveRestore, Trash2, Download,
-  Moon, Sun, X, GripVertical, Sparkles, Pencil, Minus, CalendarDays, Zap, LayoutGrid, TrendingUp, TrendingDown,
+  Moon, Sun, X, GripVertical, Sparkles, Pencil, Minus, CalendarDays, Zap, LayoutGrid, TrendingUp, TrendingDown, ChevronDown,
   Play, Pause, StopCircle, Clock3, LogOut,
 } from "lucide-react";
 import {
@@ -110,6 +110,7 @@ const rowToHabit = (r, cfg = {}, i = 0) => ({
   unit: cfg.unit || "",
   archived: !!cfg.archived,
   order: cfg.order != null ? cfg.order : i,
+  column: cfg.column || null,
 });
 
 /* ---------------- habit logic (Quality habits extend, never replace, the Simple model) ---------------- */
@@ -586,7 +587,8 @@ function QuantRow({ h, value, onChange, accent, T }) {
   );
 }
 
-function TodayView({ habits, comps, setComp, date, setDate, T, accent, grace, onQuickAdd, onStarter, onArchive }) {
+function TodayView({ habits, comps, setComp, date, setDate, T, accent, grace, onQuickAdd, onStarter, onArchive,
+  boardView, setBoardView, boardColumns, onAddColumn, onRenameColumn, onRemoveColumn, onSetHabitColumn }) {
   const active = habits.filter((h) => !h.archived).sort((a, b) => a.order - b.order);
   const scheduled = active.filter((h) => isScheduled(h, date) || doneValue(comps, date, h.id) > 0);
   const doneCount = scheduled.filter((h) => isDone(h, comps, date)).length;
@@ -601,22 +603,40 @@ function TodayView({ habits, comps, setComp, date, setDate, T, accent, grace, on
   }, []);
 
   return (
-    <div className="max-w-2xl mx-auto w-full">
+    <div className={boardView ? "max-w-6xl mx-auto w-full" : "max-w-2xl mx-auto w-full"}>
       <div className="flex items-end justify-between mb-5">
         <div>
           <p className="text-sm font-medium" style={{ color: T.muted }}>{isToday ? "Today" : "Editing past day"}</p>
           <h1 className="hb-display text-3xl tracking-tight" style={{ color: T.text }}>{prettyDate(date)}</h1>
         </div>
-        <label className="hb-press flex items-center gap-1.5 text-sm rounded-full px-3 py-1.5 cursor-pointer"
-          style={{ background: T.surface, border: `1px solid ${T.border}`, color: T.muted }}>
-          <CalendarDays size={15} />
-          <span className="hidden sm:inline">Pick date</span>
-          <input type="date" aria-label="Pick a date to view or edit" value={date} max={todayStr()}
-            onChange={(e) => e.target.value && setDate(e.target.value)}
-            className="w-0 h-0 opacity-0 absolute" />
-        </label>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-full p-1" style={{ background: T.surface2 }} role="tablist" aria-label="Layout">
+            {[["list", ListChecks, "List"], ["board", LayoutGrid, "Board"]].map(([k, Icon, label]) => (
+              <button key={k} role="tab" aria-selected={(k === "board") === !!boardView} aria-label={`${label} view`} title={`${label} view`}
+                onClick={() => setBoardView(k === "board")}
+                className="hb-press rounded-full p-1.5"
+                style={{
+                  background: (k === "board") === !!boardView ? T.solid : "transparent",
+                  color: (k === "board") === !!boardView ? accent : T.faint,
+                  boxShadow: (k === "board") === !!boardView ? T.shadow : "none",
+                  transition: `all .3s ${EASE}`,
+                }}>
+                <Icon size={15} />
+              </button>
+            ))}
+          </div>
+          <label className="hb-press flex items-center gap-1.5 text-sm rounded-full px-3 py-1.5 cursor-pointer"
+            style={{ background: T.surface, border: `1px solid ${T.border}`, color: T.muted }}>
+            <CalendarDays size={15} />
+            <span className="hidden sm:inline">Pick date</span>
+            <input type="date" aria-label="Pick a date to view or edit" value={date} max={todayStr()}
+              onChange={(e) => e.target.value && setDate(e.target.value)}
+              className="w-0 h-0 opacity-0 absolute" />
+          </label>
+        </div>
       </div>
 
+      <div className="max-w-2xl mx-auto w-full">
       {/* week strip */}
       <div className="grid grid-cols-7 gap-1.5 mb-6">
         {week.map((d) => {
@@ -670,7 +690,14 @@ function TodayView({ habits, comps, setComp, date, setDate, T, accent, grace, on
           {grace && <p className="text-xs mt-1.5 flex items-center gap-1" style={{ color: T.faint }}><Sparkles size={12} /> Streak grace is on — one miss won't break you</p>}
         </div>
       </div>
+      </div>
 
+      {boardView ? (
+        <BoardView habits={scheduled} comps={comps} setComp={setComp} date={date} T={T} accent={accent} grace={grace}
+          boardColumns={boardColumns} onAddColumn={onAddColumn} onRenameColumn={onRenameColumn}
+          onRemoveColumn={onRemoveColumn} onSetHabitColumn={onSetHabitColumn} />
+      ) : (
+      <div className="max-w-2xl mx-auto w-full">
       {/* checklist — simple, quantifiable, and quality habits together */}
       <div className="flex flex-col gap-2">
         {scheduled.map((h, i) => {
@@ -721,9 +748,12 @@ function TodayView({ habits, comps, setComp, date, setDate, T, accent, grace, on
           );
         })}
       </div>
+      </div>
+      )}
 
+      <div className="max-w-2xl mx-auto w-full">
       {active.length === 0 && (
-        <div className="hb-card hb-rise rounded-3xl p-8 text-center" style={{ background: T.surface, border: `1px solid ${T.border}`, boxShadow: T.shadow }}>
+        <div className="hb-card hb-rise rounded-3xl p-8 text-center mt-2" style={{ background: T.surface, border: `1px solid ${T.border}`, boxShadow: T.shadow }}>
           <p className="text-3xl mb-3" aria-hidden>{"\u{1F331}"}</p>
           <p className="hb-display text-lg mb-1" style={{ color: T.text }}>No habits yet</p>
           <p className="text-sm mb-4" style={{ color: T.muted }}>Create one below, or begin with a curated starter set.</p>
@@ -744,6 +774,181 @@ function TodayView({ habits, comps, setComp, date, setDate, T, accent, grace, on
           className="flex-1 bg-transparent outline-none text-sm" style={{ color: T.text }} />
         {quick && <button type="submit" className="text-sm font-semibold" style={{ color: accent }}>Add</button>}
       </form>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Board view (custom columns, drag-and-drop) ---------------- */
+const UNSORTED = "__unsorted";
+
+function ColumnMoveMenu({ habit, columns, onMove, T, accent }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("touchstart", onDoc);
+    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("touchstart", onDoc); };
+  }, [open]);
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <button aria-label={`Move ${habit.name} to a different column`} aria-expanded={open} onClick={() => setOpen((p) => !p)}
+        className="hb-press flex items-center justify-center rounded-full p-1"
+        style={{ background: T.surface2, color: T.faint }}>
+        <ChevronDown size={13} />
+      </button>
+      {open && (
+        <div className="hb-pop absolute right-0 top-full mt-1.5 z-20 rounded-xl overflow-hidden py-1 min-w-[140px]"
+          style={{ background: T.solid, border: `1px solid ${T.border}`, boxShadow: T.shadow }}>
+          {columns.map((c) => (
+            <button key={c.id} onClick={() => { onMove(c.id === UNSORTED ? null : c.id); setOpen(false); }}
+              className="w-full text-left px-3 py-1.5 text-xs font-medium"
+              style={{ color: (habit.column || UNSORTED) === c.id ? accent : T.text, background: (habit.column || UNSORTED) === c.id ? accent + "14" : "transparent" }}>
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BoardCard({ h, comps, setComp, date, T, accent, grace, columns, onSetHabitColumn, onDragStart, onDragEnd, dragging }) {
+  const v = doneValue(comps, date, h.id);
+  const done = isDone(h, comps, date);
+  const quality = isQuality(h);
+  const streak = calcStreak(h, comps, grace);
+  const c = hColor(h);
+  return (
+    <div
+      draggable
+      onDragStart={(e) => { e.dataTransfer.setData("text/plain", h.id); onDragStart(h.id); }}
+      onDragEnd={onDragEnd}
+      className="hb-rise hb-card flex flex-col gap-2 rounded-2xl px-3.5 py-3 cursor-grab active:cursor-grabbing"
+      style={{
+        background: T.surface, border: `1px solid ${T.border}`, opacity: dragging ? 0.4 : done ? 0.75 : 1,
+        transition: `opacity .25s, box-shadow .45s ${EASE}, border-color .45s`,
+        "--glow-border": c + "40", "--glow-shadow": `0 0 0 1px ${c}26, 0 6px 30px -8px ${c}33`,
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <GripVertical size={13} style={{ color: T.faint }} className="flex-shrink-0 hidden sm:block" aria-hidden />
+        <span className="text-lg w-6 text-center flex-shrink-0" aria-hidden>{h.emoji}</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate" style={{ color: T.text, textDecoration: done && !h.quant && !quality ? "line-through" : "none", textDecorationColor: T.faint }}>
+            {h.name}
+          </p>
+          <p className="text-[11px] flex items-center gap-1 truncate" style={{ color: T.faint }}>
+            {h.category}{quality && ` · ${INTENSITY_LABELS[v]}`}
+          </p>
+        </div>
+        <ColumnMoveMenu habit={h} columns={columns} onMove={(colId) => onSetHabitColumn(h.id, colId)} T={T} accent={accent} />
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <StreakBadge streak={streak} T={T} accent={accent} />
+        {quality
+          ? <IntensityCell h={h} value={v} onChange={(nv) => setComp(date, h.id, nv)} T={T} label={`${h.name}: ${INTENSITY_LABELS[v]}`} />
+          : h.quant
+          ? <QuantRow h={h} value={v} onChange={(nv) => setComp(date, h.id, nv)} accent={accent} T={T} />
+          : <CheckButton done={done} label={`Mark ${h.name} ${done ? "incomplete" : "complete"}`}
+              onClick={() => setComp(date, h.id, done ? 0 : 1)} accent={accent} T={T} />}
+      </div>
+    </div>
+  );
+}
+
+function BoardColumn({ col, habits, comps, setComp, date, T, accent, grace, columns, onSetHabitColumn, onRename, onRemove, draggingId, setDraggingId }) {
+  const [editing, setEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState(col.name);
+  const [over, setOver] = useState(false);
+  const removable = col.id !== UNSORTED;
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setOver(false);
+    const id = e.dataTransfer.getData("text/plain");
+    if (id) onSetHabitColumn(id, col.id === UNSORTED ? null : col.id);
+  };
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={handleDrop}
+      className="flex flex-col rounded-3xl flex-shrink-0"
+      style={{
+        width: 268, background: over ? accent + "0F" : T.surface2 + "80",
+        border: `1.5px dashed ${over ? accent + "88" : "transparent"}`,
+        transition: `background .25s, border-color .25s`,
+        padding: 10,
+      }}
+    >
+      <div className="flex items-center gap-1.5 px-1.5 py-1 mb-2">
+        {editing ? (
+          <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)}
+            onBlur={() => { setEditing(false); onRename && onRename(nameDraft.trim() || col.name); }}
+            onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+            aria-label="Column name"
+            className="flex-1 min-w-0 rounded-lg px-2 py-1 text-sm font-semibold outline-none"
+            style={{ background: T.solid, border: `1px solid ${accent}55`, color: T.text }} />
+        ) : (
+          <button onClick={() => removable && setEditing(true)} disabled={!removable}
+            className="flex-1 min-w-0 text-left text-sm font-semibold truncate flex items-center gap-1.5"
+            style={{ color: T.text, cursor: removable ? "text" : "default" }}>
+            {col.name} {removable && <Pencil size={11} style={{ color: T.faint }} />}
+          </button>
+        )}
+        <span className="text-[11px] font-semibold tabular-nums rounded-full px-1.5 py-0.5 flex-shrink-0" style={{ color: T.faint, background: T.surface2 }}>
+          {habits.length}
+        </span>
+        {removable && (
+          <button aria-label={`Delete column ${col.name}`} onClick={() => onRemove && onRemove()}
+            className="hb-press rounded-full p-1 flex-shrink-0" style={{ color: T.faint }}>
+            <Trash2 size={13} />
+          </button>
+        )}
+      </div>
+      <div className="flex flex-col gap-2 min-h-[64px]">
+        {habits.map((h) => (
+          <BoardCard key={h.id} h={h} comps={comps} setComp={setComp} date={date} T={T} accent={accent} grace={grace}
+            columns={columns} onSetHabitColumn={onSetHabitColumn}
+            dragging={draggingId === h.id}
+            onDragStart={setDraggingId} onDragEnd={() => setDraggingId(null)} />
+        ))}
+        {habits.length === 0 && (
+          <div className="flex-1 rounded-2xl flex items-center justify-center py-6 text-center text-xs"
+            style={{ color: T.faint, border: `1px dashed ${T.border}` }}>
+            Drag habits here
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BoardView({ habits, comps, setComp, date, T, accent, grace, boardColumns, onAddColumn, onRenameColumn, onRemoveColumn, onSetHabitColumn }) {
+  const [draggingId, setDraggingId] = useState(null);
+  const columns = [{ id: UNSORTED, name: "Unsorted" }, ...boardColumns];
+  const byCol = (colId) => habits.filter((h) => (h.column && boardColumns.some((c) => c.id === h.column) ? h.column : null) === (colId === UNSORTED ? null : colId));
+
+  return (
+    <div className="overflow-x-auto pb-3 hb-scroll">
+      <div className="flex items-start gap-3" style={{ width: "max-content" }}>
+        {columns.map((col) => (
+          <BoardColumn key={col.id} col={col} habits={byCol(col.id)} comps={comps} setComp={setComp} date={date} T={T} accent={accent} grace={grace}
+            columns={columns} onSetHabitColumn={onSetHabitColumn}
+            onRename={col.id !== UNSORTED ? (name) => onRenameColumn(col.id, name) : null}
+            onRemove={col.id !== UNSORTED ? () => onRemoveColumn(col.id) : null}
+            draggingId={draggingId} setDraggingId={setDraggingId} />
+        ))}
+        <button onClick={() => onAddColumn("New column")}
+          className="hb-press flex flex-col items-center justify-center gap-1.5 rounded-3xl flex-shrink-0 text-xs font-semibold"
+          style={{ width: 120, alignSelf: "stretch", minHeight: 96, color: accent, border: `1.5px dashed ${accent}55`, background: accent + "0A" }}>
+          <Plus size={18} /> Add column
+        </button>
+      </div>
     </div>
   );
 }
@@ -1980,6 +2185,8 @@ export default function HabitTracker({ user, onSignOut }) {
   const [displayName, setDisplayNameState] = useState(initialProfile.displayName || "");
   const [avatarEmoji, setAvatarEmojiState] = useState(initialProfile.avatarEmoji || AVATAR_EMOJIS[0]);
   const [avatarColor, setAvatarColorState] = useState(initialProfile.avatarColor || ACCENTS[0].hex);
+  const [boardView, setBoardViewState] = useState(!!initialProfile.boardView);
+  const [boardColumns, setBoardColumnsState] = useState(initialProfile.boardColumns || []);
   const [grace, setGrace] = useState(false);
   const [onboard, setOnboard] = useState(false);
   const [celebrate, setCelebrate] = useState(null);
@@ -1997,6 +2204,19 @@ export default function HabitTracker({ user, onSignOut }) {
   const setDisplayName = (v) => { setDisplayNameState(v); saveProfilePatch({ displayName: v }); };
   const setAvatarEmoji = (v) => { setAvatarEmojiState(v); saveProfilePatch({ avatarEmoji: v }); };
   const setAvatarColor = (v) => { setAvatarColorState(v); saveProfilePatch({ avatarColor: v }); };
+  const setBoardView = (v) => { setBoardViewState(v); saveProfilePatch({ boardView: v }); };
+  const setBoardColumns = (cols) => { setBoardColumnsState(cols); saveProfilePatch({ boardColumns: cols }); };
+
+  const addColumn = (name) => {
+    setBoardColumns([...boardColumns, { id: `col_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name: name || "New column" }]);
+  };
+  const renameColumn = (id, name) => {
+    setBoardColumns(boardColumns.map((c) => (c.id === id ? { ...c, name } : c)));
+  };
+  const removeColumn = (id) => {
+    setBoardColumns(boardColumns.filter((c) => c.id !== id));
+    clearHabitsFromColumn(id);
+  };
 
   const fail = (e, what) => { console.error(what, e); setDbError(`${what} — ${(e && e.message) || "check your connection"}`); };
 
@@ -2125,7 +2345,7 @@ export default function HabitTracker({ user, onSignOut }) {
   const extras = (h, order) => ({
     mode: h.mode || "simple", color: h.color || null, type: h.type || "daily", days: h.days || [],
     quant: !!h.quant, quantTarget: h.quantTarget || 1, unit: h.unit || "", desc: h.desc || "",
-    target: h.target || 3, archived: !!h.archived, order,
+    target: h.target || 3, archived: !!h.archived, order, column: h.column || null,
   });
   const create = async (h) => {
     try {
@@ -2164,6 +2384,16 @@ export default function HabitTracker({ user, onSignOut }) {
       saveCfg((c) => ids.forEach((id, i) => { c[id] = { ...(c[id] || {}), order: i }; }));
       setHabits((p) => p.map((x) => (ids.includes(x.id) ? { ...x, order: ids.indexOf(x.id) } : x)));
     },
+    setColumn: (id, columnId) => {
+      saveCfg((c) => { c[id] = { ...(c[id] || {}), column: columnId }; });
+      setHabits((p) => p.map((x) => (x.id === id ? { ...x, column: columnId } : x)));
+    },
+  };
+  const clearHabitsFromColumn = (columnId) => {
+    const ids = habits.filter((h) => h.column === columnId).map((h) => h.id);
+    if (!ids.length) return;
+    saveCfg((c) => { ids.forEach((id) => { c[id] = { ...(c[id] || {}), column: null }; }); });
+    setHabits((p) => p.map((x) => (ids.includes(x.id) ? { ...x, column: null } : x)));
   };
   const quickAdd = (name) => create({
     name, emoji: "\u2728", desc: "", category: "Health", type: "daily", mode: "simple", color: null,
@@ -2273,7 +2503,9 @@ export default function HabitTracker({ user, onSignOut }) {
         </nav>
 
         <main className="flex-1 px-4 sm:px-8 pt-6 sm:pt-10 pb-28 md:pb-12">
-          {view === "today" && <TodayView habits={habits} comps={comps} setComp={setComp} date={date} setDate={setDate} T={T} accent={accent} grace={grace} onQuickAdd={quickAdd} onStarter={addStarterHabits} onArchive={habitActions.archive} />}
+          {view === "today" && <TodayView habits={habits} comps={comps} setComp={setComp} date={date} setDate={setDate} T={T} accent={accent} grace={grace} onQuickAdd={quickAdd} onStarter={addStarterHabits} onArchive={habitActions.archive}
+            boardView={boardView} setBoardView={setBoardView} boardColumns={boardColumns}
+            onAddColumn={addColumn} onRenameColumn={renameColumn} onRemoveColumn={removeColumn} onSetHabitColumn={habitActions.setColumn} />}
           {view === "habits" && <HabitsView habits={habits} actions={habitActions} comps={comps} T={T} accent={accent} grace={grace} />}
           {view === "analysis" && <AnalysisView habits={habits} comps={comps} setComp={setComp} times={times} T={T} accent={accent} grace={grace} />}
           {view === "dashboard" && <DashboardView habits={habits} comps={comps} setComp={setComp} T={T} accent={accent} grace={grace} />}
